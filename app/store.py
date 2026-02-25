@@ -18,12 +18,18 @@ class RecentFingerprint:
     seen_at: datetime
 
 
+@dataclass
+class StoredEvent:
+    event: NotificationEvent
+    received_at: datetime
+
+
 class InMemoryStore:
     """State store suitable for demos/tests. Swap with Redis or DB in production."""
 
     def __init__(self) -> None:
         self._rules = RuleConfig()
-        self._events_by_user: dict[str, deque[NotificationEvent]] = defaultdict(deque)
+        self._events_by_user: dict[str, deque[StoredEvent]] = defaultdict(deque)
         self._audit_by_user: dict[str, deque[AuditRecord]] = defaultdict(deque)
         self._fingerprints_by_user: dict[str, deque[RecentFingerprint]] = defaultdict(deque)
         self._exact_seen: dict[tuple[str, str], datetime] = {}
@@ -35,9 +41,9 @@ class InMemoryStore:
         self._rules = rules
         return self._rules
 
-    def add_event(self, event: NotificationEvent) -> None:
+    def add_event(self, event: NotificationEvent, received_at: datetime) -> None:
         q = self._events_by_user[event.user_id]
-        q.append(event)
+        q.append(StoredEvent(event=event, received_at=received_at))
         self._trim_events(event.user_id)
 
     def add_audit(self, user_id: str, record: AuditRecord) -> None:
@@ -48,7 +54,7 @@ class InMemoryStore:
     def recent_events(self, user_id: str, within_seconds: int) -> list[NotificationEvent]:
         self._trim_events(user_id)
         cutoff = utc_now() - timedelta(seconds=within_seconds)
-        return [ev for ev in self._events_by_user[user_id] if ev.timestamp >= cutoff]
+        return [stored.event for stored in self._events_by_user[user_id] if stored.received_at >= cutoff]
 
     def recent_audit(self, user_id: str, limit: int = 50) -> list[AuditRecord]:
         self._trim_audit(user_id)
@@ -76,7 +82,7 @@ class InMemoryStore:
     def _trim_events(self, user_id: str) -> None:
         cutoff = utc_now() - timedelta(days=2)
         q = self._events_by_user[user_id]
-        while q and q[0].timestamp < cutoff:
+        while q and q[0].received_at < cutoff:
             q.popleft()
 
     def _trim_audit(self, user_id: str) -> None:

@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from app.engine import PrioritizationEngine
 from app.models import Decision, NotificationEvent, RuleConfig
 from app.store import InMemoryStore
@@ -56,3 +58,21 @@ def test_expired_event_is_never() -> None:
     engine = PrioritizationEngine(store)
     e = mk_event(expires_at=datetime.now(timezone.utc) - timedelta(seconds=1))
     assert engine.decide(e).decision == Decision.NEVER
+
+
+def test_naive_timestamp_rejected() -> None:
+    with pytest.raises(ValueError, match="timezone offset"):
+        mk_event(timestamp=datetime(2026, 1, 1, 0, 0, 0))
+
+
+def test_backdated_events_do_not_bypass_hourly_limit() -> None:
+    store = InMemoryStore()
+    store.set_rules(RuleConfig(max_per_hour=1, urgent_event_types=[]))
+    engine = PrioritizationEngine(store)
+    very_old = datetime.now(timezone.utc) - timedelta(days=365)
+    first = mk_event(eventtype="reminder", priorityhint="low", timestamp=very_old)
+    second = mk_event(eventtype="reminder", priorityhint="low", timestamp=very_old, dedupekey="x-2")
+
+    assert engine.decide(first).decision == Decision.NOW
+    # Should still be rate limited because we window using trusted ingestion time.
+    assert engine.decide(second).decision == Decision.LATER

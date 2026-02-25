@@ -118,7 +118,7 @@ class PrioritizationEngine:
         now = utc_now()
         self.store.mark_exact_seen(event.user_id, event.dedupe_key or self._stable_dedupe_key(event), now)
         self.store.push_fingerprint(event.user_id, self._fingerprint(event), event, now)
-        self.store.add_event(event)
+        self.store.add_event(event, received_at=now)
         self.store.add_audit(event.user_id, AuditRecord(event=event, decision=response, created_at=now))
         return response
 

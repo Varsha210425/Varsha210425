@@ -5,6 +5,7 @@ from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field
+from pydantic import field_validator
 
 
 class Decision(str, Enum):
@@ -27,6 +28,15 @@ class NotificationEvent(BaseModel):
     expires_at: datetime | None = None
 
     model_config = {"populate_by_name": True}
+
+    @field_validator("timestamp", "expires_at")
+    @classmethod
+    def _require_timezone_aware(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return value
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("datetime must include timezone offset")
+        return value
 
 
 class DecisionResponse(BaseModel):
