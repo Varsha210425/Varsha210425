@@ -65,6 +65,12 @@ def test_naive_timestamp_rejected() -> None:
         mk_event(timestamp=datetime(2026, 1, 1, 0, 0, 0))
 
 
+def test_timestamp_is_normalized_to_utc() -> None:
+    ev = mk_event(timestamp=datetime(2026, 1, 1, 5, 30, 0, tzinfo=timezone(timedelta(hours=5, minutes=30))))
+    assert ev.timestamp.tzinfo == timezone.utc
+    assert ev.timestamp == datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+
+
 def test_backdated_events_do_not_bypass_hourly_limit() -> None:
     store = InMemoryStore()
     store.set_rules(RuleConfig(max_per_hour=1, urgent_event_types=[]))
@@ -75,4 +81,16 @@ def test_backdated_events_do_not_bypass_hourly_limit() -> None:
 
     assert engine.decide(first).decision == Decision.NOW
     # Should still be rate limited because we window using trusted ingestion time.
+    assert engine.decide(second).decision == Decision.LATER
+
+
+def test_future_dated_events_do_not_poison_hourly_limit_window() -> None:
+    store = InMemoryStore()
+    store.set_rules(RuleConfig(max_per_hour=1, urgent_event_types=[]))
+    engine = PrioritizationEngine(store)
+    future = datetime.now(timezone.utc) + timedelta(days=365)
+    first = mk_event(eventtype="reminder", priorityhint="low", timestamp=future)
+    second = mk_event(eventtype="reminder", priorityhint="low", timestamp=future, dedupekey="x-3")
+
+    assert engine.decide(first).decision == Decision.NOW
     assert engine.decide(second).decision == Decision.LATER

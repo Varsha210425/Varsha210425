@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
@@ -36,7 +36,7 @@ class NotificationEvent(BaseModel):
             return value
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("datetime must include timezone offset")
-        return value
+        return value.astimezone(timezone.utc)
 
 
 class DecisionResponse(BaseModel):
